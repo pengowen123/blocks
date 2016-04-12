@@ -1,5 +1,8 @@
-use error::BlocksError;
-use error::ErrorKind::*;
+// First stage in compilation.
+// Converts a given program taken as a string into a a tokenized form, for easier compilation.
+// This stage does not detect any errors, but may produce invalid sets of tokens from invalid input.
+
+use utils::*;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Token {
@@ -7,27 +10,31 @@ pub enum Token {
     Symbol, Goto,
     IfGoto,
     Call, Return,
-    Raw, Identifier(String),
-    Tag, Dereference,
-    Address, Equals,
-    Multiply, Divide,
-    Add, Subtract,
-    Not, Compare,
-    And, Or,
-    Xor, Greater,
-    Less, GreaterEqual,
-    LessEqual, OpenBrace,
-    CloseBrace, OpenParen,
-    CloseParen, LineEnd,
-    Null
+    Identifier(String), Tag,
+    Dereference, Address,
+    Equals, Multiply,
+    Divide, Add,
+    Subtract, Not,
+    Compare, And,
+    Or, Xor,
+    Greater, Less,
+    GreaterEqual, LessEqual,
+    OpenBrace, CloseBrace,
+    LineEnd, Raw,
+    Number(i32), Register(Register),
+    Other(String), Null
 }
 
 pub fn build_tokens(mut prog: String) -> Vec<Token> {
     let mut tokens = vec![Token::Null];
 
     let mut previous_chr = '\0';
+    let mut previous_chr2 = '\0';
     let mut previous_word = String::new();
     let mut word = String::new();
+    let mut raw = false;
+    let mut comment = false;
+    let mut previous_whitespace = false;
 
     while !prog.is_empty() {
         let mut token = Token::Null;
@@ -35,12 +42,46 @@ pub fn build_tokens(mut prog: String) -> Vec<Token> {
         let mut word_end = true;
         let mut is_char = true;
         let mut pop = false;
+        let mut special = false;
+
+        if raw {
+            word_end = false;
+            is_char = false;
+            special = true;
+
+            if chr != '`' {
+                word.push(chr);
+            }
+        }
+
+        if comment {
+            if chr == '\n' {
+                comment = false;
+            } else {
+                special = true;
+            }
+        } else {
+            if chr == '`' {
+                raw = !raw;
+                special = true;
+            }
+        }
+
+        if special {
+            if prog.len() > 1 {
+                prog = prog[1..].to_string();
+                continue;
+            } else {
+                tokens.push(Token::Null);
+                break;
+            }
+        }
 
         match chr {
             '\n' | ' ' => is_char = false,
-            '=' => match tokens.last() {
-                Some(t) => {
-                    token = match *t {
+            '=' => token = if let Some(t) = tokens.last() {
+                if !previous_whitespace {
+                    match *t {
                         Token::Greater => {
                             pop = true;
                             Token::GreaterEqual
@@ -55,16 +96,29 @@ pub fn build_tokens(mut prog: String) -> Vec<Token> {
                         },
                         _ => Token::AssignSymbol
                     }
+                } else {
+                    Token::AssignSymbol
                 }
-                None => {}
-            },
+            } else { Token::AssignSymbol },
             ';' => token = Token::LineEnd,
             '#' => token = Token::Dereference,
             '@' => token = Token::Address,
             '*' => token = Token::Multiply,
-            '/' => token = Token::Divide,
+            '/' => token = {
+                if let Some(&Token::Divide) = tokens.last() {
+                    if !previous_whitespace {
+                        pop = true;
+                        comment = true;
+                        Token::Null
+                    } else {
+                        Token::Divide
+                    }
+                } else {
+                    Token::Divide
+                }
+            },
             '+' => token = Token::Add,
-            '-' => token = Token::Subtract,
+            '~' => token = Token::Subtract,
             '!' => token = Token::Not,
             '&' => token = Token::And,
             '|' => token = Token::Or,
@@ -73,8 +127,6 @@ pub fn build_tokens(mut prog: String) -> Vec<Token> {
             '<' => token = Token::Less,
             '{' => token = Token::OpenBrace,
             '}' => token = Token::CloseBrace,
-            '(' => token = Token::OpenParen,
-            ')' => token = Token::CloseParen,
             '?' => token = Token::Tag,
             _ => {
                 word_end = false;
@@ -91,22 +143,28 @@ pub fn build_tokens(mut prog: String) -> Vec<Token> {
             let words = ["set", "cmp",
                          ">=", "<=",
                          "symbol", "goto",
-                         "ifgoto", "call"];
+                         "ifgoto", "call",
+                         "raw"];
 
             let symbols = ['>', '<',
                            '!', '&',
                            '|', '^',
-                           '+', '-',
+                           '+', '~',
                            '*', '/',
                            '#', '@',
                            '=', '?'];
 
-            if is_element_string(&previous_word, &words) {
-                if !word.is_empty() && !word.chars().nth(0).unwrap().is_whitespace() {
+            if is_element(&previous_word, &words) {
+                if !word.is_empty() {
                     tokens.push(Token::Identifier(word.clone()));
                 }
-            } else if is_element_string(&previous_chr, &symbols) {
-                if word.len() > 0 && !word.chars().nth(0).unwrap().is_whitespace() {
+            } else if is_element(&previous_chr, &symbols) &&
+                      previous_chr2 != '?' &&
+                      (previous_chr, previous_chr2) != ('/', '/') {
+                // this magically lets you leave out semicolons in tags
+                previous_chr2 = previous_chr;
+
+                if word.len() > 0 {
                     tokens.push(Token::Identifier(word.clone()));
                 }
             } else {
@@ -137,9 +195,9 @@ pub fn build_tokens(mut prog: String) -> Vec<Token> {
                         let last = tokens[tokens.len() - 1].clone();
 
                         if let Token::Identifier(..) = last {} else {
-                            if !word.is_empty() && !word.chars().nth(0).unwrap().is_whitespace() {
+                            if !word.is_empty() {
                                 tokens.push(Token::Identifier(word.clone()));
-                            }        
+                            }
                         }
                     }
                 }
@@ -157,6 +215,8 @@ pub fn build_tokens(mut prog: String) -> Vec<Token> {
             previous_chr = chr;
         }
 
+        previous_whitespace = chr.is_whitespace();
+
         if prog.len() > 1 {
             prog = prog[1..].to_string();
         } else {
@@ -165,21 +225,22 @@ pub fn build_tokens(mut prog: String) -> Vec<Token> {
         }
     }
 
-    tokens
-}
-
-pub fn is_element_token(elem: &Token, slice: &[Token]) -> bool {
-    slice.iter().fold(false, |acc, e| {
-        if let (&Token::Identifier(..), &Token::Identifier(..)) = (elem, e) {
-            true
+    tokens.iter().map(|t| if let &Token::Identifier(ref ident) = t {
+        if let Ok(v) = ident.parse::<i32>() {
+            Token::Number(v)
         } else {
-            if elem == e { true } else { acc }
+            match &ident as &str {
+                "$int1" => Token::Register(Register::Int1),
+                "$int2" => Token::Register(Register::Int2),
+                "$accum" => Token::Register(Register::Accum),
+                "$flag" => Token::Register(Register::Flag),
+                "$error" => Token::Register(Register::Error),
+                "$segment" => Token::Register(Register::Segment),
+                "$pcounter" => Token::Register(Register::PCounter),
+                _ => t.clone()
+            }
+        }} else {
+            t.clone()
         }
-    })
-}
-
-fn is_element_string<A: PartialEq<B>, B: Eq>(elem: &A, slice: &[B]) -> bool {
-    slice.iter().fold(false, |acc, e| {
-        if elem == e { true } else { acc }
-    })
+    ).collect()
 }

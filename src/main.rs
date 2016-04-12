@@ -1,25 +1,15 @@
-mod token;
-mod tree;
-mod error;
-
-use std::error::Error;
+extern crate blocks;
 
 fn main() {
     let prog = "
-        set @1 = @2;
+        symbol foo { return; return }
+        symbol bar { return }
+
+        set x = 0;
     ";
 
-    let tokens = match tree::build_token_tree(prog.to_string()) {
-        Ok(v) => Some(v),
-        Err(e) => {
-            println!("{}", e);
-            None
-        }
-    };
-
-    if let Some(tree::Tree::Block(e)) = tokens {
-        for token in e {
-            println!("{:?}", token);
-        }
+    match blocks::compile(prog) {
+        Ok(v) => println!("Compiled:\n{:?}", v),
+        Err(e) => println!("{}", e)
     }
 }
