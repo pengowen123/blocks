@@ -4,10 +4,8 @@
 // The machine code generation is easy, so it also does the work of interpreting tags.
 // An important step here is to organize the resulting code, which means it:
 //
-//   - reserves space for variables in the data section
-//   - places symbol blocks into the skipped section
-//   - inserts control flow to make sure only code in the runnable section is run (it branches past
-//     the skipped and data section)
+//   - reserves space for variables and symbol blocks
+//   - inserts code for dynamic lookup of symbol and variable addresses
 
 use token::Token;
 use tree::build_token_tree;
@@ -191,13 +189,24 @@ pub fn compile_ir(ir: IrResult, vars: &mut HashMap<String, i32>,
 
     let mut data_section = vec![0; vars.len()];
 
-    // apparently it wont be as simple as data, symbol, program sections due to var_addr and
-    // sym_addr tags moving things to out of program addresses
-    // probably generate a mybytes specific format using addr x code pattern to place things out of
-    // bounds
-
+    // A decision needs to be made regarding the behavior of symbol and variable placement.
+    // Problems to solve:
+    //   - How should the variable placement deal with the use the var_addr tag?
+    //   - How agnostic should the generated code be to the location of the program?
+    //   - Similarly, how can the program call symbols if they are moved along with the program (or
+    //     should they be unmovable?
+    // 
+    // Potential solutions:
+    //   Dynamic addresses which allows full independency from program location:
+    //   - Allow symbols to be moved with the program by setting the segment register to the
+    //     program, and reset it to 0 for symbols tagged with sym_addr
+    //   - Use a similar system for variables, using dynamic calculation of addresses, while
+    //     retaining static addresses for variables tagged with var_addr
+    //   Issues:
+    //   - Requires an address configurable through tags for storing the program location
+    //   - Has a potentially large performance penalty
+    //   - Complexifies the generated code, but has a much larger effect in compiler complexity
+    
     //println!("variable section size: {:?}", data_section.len());
-    //println!("symbol section size: {:?}", symbol_section_size);
-
-    Ok(result)
+    //println!("symbol section size: {:?}", symbol_section_size); Ok(result)
 }

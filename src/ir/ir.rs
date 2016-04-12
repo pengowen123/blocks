@@ -101,9 +101,7 @@ pub fn build_ir(tree: TokenWrapper, temp_id: i32) -> Result<IrResult, BlocksErro
                 } else {
                     lhs.var_addr.clone()
                 };
-
-                let rhs_addr = if is_assigned_to("__temp_1__", &rhs.ir) {
-                    Address::new_temp(1)
+let rhs_addr = if is_assigned_to("__temp_1__", &rhs.ir) { Address::new_temp(1)
                 } else {
                     rhs.address
                 };
