@@ -2,5 +2,3 @@
 name = "blocks"
 version = "0.1.0"
 authors = ["pengowen123 <pengowen816@gmail.com>"]
-
-[dependencies]
