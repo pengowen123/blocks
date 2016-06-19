@@ -52,10 +52,13 @@ pub enum Register {
     // These must be in the same order as mybytes ids so it is safe to cast it to i32
     Int1,
     Int2,
+    Int3,
+    Int4,
     Flag,
     Accum,
     Error,
-    Segment,
+    FlowSegment,
+    DataSegment,
     PCounter
 }
 
@@ -75,6 +78,7 @@ impl Address {
     }
 }
 
+#[derive(Debug)]
 pub struct Stack {
     pub data: Vec<TokenWrapper>
 }

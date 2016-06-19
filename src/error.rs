@@ -3,7 +3,7 @@ use token::Token;
 use std::error::Error;
 use std::fmt;
 
-const ERROR_MESSAGES: [&'static str; 15] = [
+const ERROR_MESSAGES: &'static [&'static str] = &[
     "Unexpected token: $0",
     "Not enough arguments to keyword or operator: $0",
     "Symbol name must be a string",

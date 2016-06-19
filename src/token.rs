@@ -232,15 +232,18 @@ pub fn build_tokens(mut prog: String) -> Vec<Token> {
             match &ident as &str {
                 "$int1" => Token::Register(Register::Int1),
                 "$int2" => Token::Register(Register::Int2),
+                "$int3" => Token::Register(Register::Int3),
+                "$int4" => Token::Register(Register::Int4),
                 "$accum" => Token::Register(Register::Accum),
                 "$flag" => Token::Register(Register::Flag),
                 "$error" => Token::Register(Register::Error),
-                "$segment" => Token::Register(Register::Segment),
+                "$segf" => Token::Register(Register::FlowSegment),
+                "$segd" => Token::Register(Register::DataSegment),
                 "$pcounter" => Token::Register(Register::PCounter),
                 _ => t.clone()
             }
-        }} else {
-            t.clone()
         }
-    ).collect()
+    } else {
+        t.clone()
+    }).collect()
 }

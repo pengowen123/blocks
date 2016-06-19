@@ -49,7 +49,7 @@ pub fn build_token_tree<'a>(prog: String) -> Result<Tree, BlocksError> {
     let mut stack = Stack::new();
     let tokens = build_tokens(prog);
 
-    let mut block_data = Vec::new();
+    let mut block_data = Stack::new();
     let mut block = false;
 
     for token in tokens.iter().rev() {
@@ -57,15 +57,28 @@ pub fn build_token_tree<'a>(prog: String) -> Result<Tree, BlocksError> {
             continue;
         }
 
-        stack.push(TokenWrapper::Token(token.clone()));
+        if block {
+            block_data.push(TokenWrapper::Token(token.clone()));
+        } else {
+            stack.push(TokenWrapper::Token(token.clone()));
+        }
 
         let inputs = get_input_count(token);
+        let mut node_data;
 
-        let mut node_data = if let Some(v) = stack.pop(inputs) {
-            v
+        if block {
+            node_data = if let Some(v) = block_data.pop(inputs) {
+                v
+            } else {
+                return Err(BlocksError::new(NotEnoughArgs, token.clone()));
+            }
         } else {
-            return Err(BlocksError::new(NotEnoughArgs, token.clone()));
-        };
+            node_data = if let Some(v) = stack.pop(inputs) {
+                v
+            } else {
+                return Err(BlocksError::new(NotEnoughArgs, token.clone()));
+            };
+        }
 
         if node_data.is_empty() {
             match token {
@@ -320,9 +333,9 @@ pub fn build_token_tree<'a>(prog: String) -> Result<Tree, BlocksError> {
                 if block { block_data.push(new) } else { stack.push(new) }
             },
             TokenWrapper::Token(Token::OpenBrace) => {
-                stack.pop(1);
-                stack.push(TokenWrapper::Tree(Tree::Block(block_data.iter().cloned().rev().collect())));
-                block_data = Vec::new();
+                block_data.pop(1);
+                stack.push(TokenWrapper::Tree(Tree::Block(block_data.data.iter().cloned().rev().collect())));
+                block_data = Stack::new();
 
                 if !block {
                     return Err(BlocksError::new(UnexpectedToken, token.clone()));
@@ -338,7 +351,9 @@ pub fn build_token_tree<'a>(prog: String) -> Result<Tree, BlocksError> {
                 stack.pop(1);
                 block = true;
             },
-            _ => return Err(BlocksError::new(Other, token.clone()))
+            _ => {
+                return Err(BlocksError::new(Other, token.clone()));
+            }
         }
     }
 

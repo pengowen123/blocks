@@ -16,6 +16,25 @@ use ir::*;
 
 use std::collections::HashMap;
 
+const SEGMENT_SETUP: &'static str = "
+12 8 9
+10 0 $0
+16 8 0
+12 8 5
+
+10 0 $1
+16 8 0
+12 7 5
+
+29 $2
+";
+
+const CLEANUP: &'static [i32] = &[
+    10, 7, 0,
+    10, 8, 0,
+    35
+];
+
 pub fn compile(prog: &str) -> Result<Vec<i32>, BlocksError> {
     let tree = build_token_tree(prog.to_string())?;
     let mut ir = build_ir(TokenWrapper::Tree(tree), 0)?;
@@ -29,7 +48,7 @@ pub fn compile(prog: &str) -> Result<Vec<i32>, BlocksError> {
     }
 
     for block in ir.blocks.keys() {
-        println!("{:?}:", block);
+        println!("\n{:?}:", block);
 
         for i in ir.blocks.get(block).unwrap() {
             println!("{:?}", i);
@@ -38,16 +57,32 @@ pub fn compile(prog: &str) -> Result<Vec<i32>, BlocksError> {
 
     println!("\n");
 
-    compile_ir(ir, &mut HashMap::new(),
-               &mut 0, &mut 0)
+    let (mut compiled, data_section_size, symbol_section_size) = compile_ir(ir, &mut HashMap::new(), &mut 0, &mut 0)?;
+    
+    for _ in 0..data_section_size {
+        compiled.insert(0, 0);
+    }
+
+    let setup_size = SEGMENT_SETUP.split_whitespace().collect::<Vec<_>>().len(); 
+    let setup = SEGMENT_SETUP.to_string()
+                             .replace("$0", &format!("{}", setup_size))
+                             .replace("$1", &format!("{}", data_section_size))
+                             .replace("$2", &format!("{}", symbol_section_size))
+                             .split_whitespace().map(|x| x.parse().unwrap()).collect::<Vec<_>>();
+    
+    for x in setup.iter().rev() {
+        compiled.insert(0, *x);
+    }
+
+    compiled.extend_from_slice(CLEANUP);
+
+    Ok(compiled)
 }
 
 pub fn compile_ir(ir: IrResult, vars: &mut HashMap<String, i32>,
-                  var_addr: &mut i32, symbol_addr: &mut i32) -> Result<Vec<i32>, BlocksError> {
+                  var_addr: &mut i32, symbol_addr: &mut i32) -> Result<(Vec<i32>, usize, usize), BlocksError> {
 
     let mut result = Vec::new();
-
-    //println!("VARS a: {:?}", vars);
 
     for (key, value) in ir.blocks.iter() {
         vars.insert(key.clone(), *symbol_addr);
@@ -62,7 +97,7 @@ pub fn compile_ir(ir: IrResult, vars: &mut HashMap<String, i32>,
             math: false
         };
 
-        let temp = compile_ir(ir, vars, var_addr, symbol_addr)?;
+        let temp = compile_ir(ir, vars, var_addr, symbol_addr)?.0;
 
         result.extend_from_slice(&temp);
         *symbol_addr += temp.len() as i32;
@@ -98,75 +133,75 @@ pub fn compile_ir(ir: IrResult, vars: &mut HashMap<String, i32>,
             Ir::RegWrite(reg, data) => {
                 let reg = reg as i32;
                 let data = get_static_addr(data);
-                result.extend_from_slice(&[6, reg, data]);
+                result.extend_from_slice(&[10, reg, data]);
             },
             Ir::RegCopy(reg, addr) => {
                 let reg = reg as i32;
                 let addr = get_var_or_new(addr, vars, var_addr);
-                result.extend_from_slice(&[7, reg, addr]);
+                result.extend_from_slice(&[11, reg, addr]);
             },
             Ir::RegMem(reg, addr) => {
                 let reg = reg as i32;
                 let addr = get_var_or_new(addr, vars, var_addr);
-                result.extend_from_slice(&[8, addr, reg]);
+                result.extend_from_slice(&[13, addr, reg]);
             },
             Ir::Add => {
-                result.extend_from_slice(&[9, 0, 1]);
-            },
-            Ir::Sub => {
-                result.extend_from_slice(&[10, 0, 1]);
-            },
-            Ir::Mul => {
-                result.extend_from_slice(&[11, 0, 1]);
-            },
-            Ir::Div => {
-                result.extend_from_slice(&[12, 0, 1]);
-            },
-            Ir::Equals => {
-                result.extend_from_slice(&[13, 0, 1]);
-            },
-            Ir::Less => {
-                result.extend_from_slice(&[14, 0, 1]);
-            },
-            Ir::Greater => {
-                result.extend_from_slice(&[15, 0, 1]);
-            },
-            Ir::LessEqual => {
                 result.extend_from_slice(&[16, 0, 1]);
             },
-            Ir::GreaterEqual => {
+            Ir::Sub => {
                 result.extend_from_slice(&[17, 0, 1]);
             },
-            Ir::Or => {
+            Ir::Mul => {
                 result.extend_from_slice(&[18, 0, 1]);
             },
-            Ir::And => {
+            Ir::Div => {
                 result.extend_from_slice(&[19, 0, 1]);
             },
+            Ir::Equals => {
+                result.extend_from_slice(&[20, 0, 1]);
+            },
+            Ir::Less => {
+                result.extend_from_slice(&[21, 0, 1]);
+            },
+            Ir::Greater => {
+                result.extend_from_slice(&[22, 0, 1]);
+            },
+            Ir::LessEqual => {
+                result.extend_from_slice(&[23, 0, 1]);
+            },
+            Ir::GreaterEqual => {
+                result.extend_from_slice(&[24, 0, 1]);
+            },
+            Ir::Or => {
+                result.extend_from_slice(&[25, 0, 1]);
+            },
+            Ir::And => {
+                result.extend_from_slice(&[26, 0, 1]);
+            },
             Ir::Not => {
-                result.extend_from_slice(&[20, 0]);
+                result.extend_from_slice(&[27, 0]);
             },
             Ir::Xor => {
-                result.extend_from_slice(&[21, 0, 1]);
+                result.extend_from_slice(&[28, 0, 1]);
             },
             Ir::Branch(addr) => {
                 let addr = get_addr(addr, vars)?;
-                result.extend_from_slice(&[22, addr]);
+                result.extend_from_slice(&[29, addr]);
             },
             Ir::CondBranch(addr) => {
                 let addr = get_addr(addr, vars)?;
-                result.extend_from_slice(&[23, addr]);
+                result.extend_from_slice(&[30, addr]);
             },
             Ir::IndirBranch(addr) => {
                 let addr = get_addr(addr, vars)?;
-                result.extend_from_slice(&[24, addr]);
+                result.extend_from_slice(&[32, addr]);
             },
             Ir::Call(addr) => {
                 let addr = get_addr(addr, vars)?;
-                result.extend_from_slice(&[25, addr]);
+                result.extend_from_slice(&[33, addr]);
             },
             Ir::Return => {
-                result.push(26);
+                result.push(35);
             },
             Ir::Raw(raw) => {
                 result.extend_from_slice(&raw);
@@ -185,28 +220,8 @@ pub fn compile_ir(ir: IrResult, vars: &mut HashMap<String, i32>,
         }
     }
 
-    println!("vars: {:?}", vars);
+    let data_section_size = vars.len() - ir.blocks.len();
+    let symbol_section_size = *symbol_addr as usize;
 
-    let mut data_section = vec![0; vars.len()];
-
-    // A decision needs to be made regarding the behavior of symbol and variable placement.
-    // Problems to solve:
-    //   - How should the variable placement deal with the use the var_addr tag?
-    //   - How agnostic should the generated code be to the location of the program?
-    //   - Similarly, how can the program call symbols if they are moved along with the program (or
-    //     should they be unmovable?
-    // 
-    // Potential solutions:
-    //   Dynamic addresses which allows full independency from program location:
-    //   - Allow symbols to be moved with the program by setting the segment register to the
-    //     program, and reset it to 0 for symbols tagged with sym_addr
-    //   - Use a similar system for variables, using dynamic calculation of addresses, while
-    //     retaining static addresses for variables tagged with var_addr
-    //   Issues:
-    //   - Requires an address configurable through tags for storing the program location
-    //   - Has a potentially large performance penalty
-    //   - Complexifies the generated code, but has a much larger effect in compiler complexity
-    
-    //println!("variable section size: {:?}", data_section.len());
-    //println!("symbol section size: {:?}", symbol_section_size); Ok(result)
+    Ok((result, data_section_size, symbol_section_size))
 }
