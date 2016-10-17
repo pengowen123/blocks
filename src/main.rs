@@ -1,22 +1,12 @@
 // TODO: add file i/o and command line tool
-// TODO: add option to use MASM backend
+//       add tags and write some libraries
+//       add optimizations
 
 extern crate blocks;
 
 fn main() {
     let prog = "
-        symbol Loop {
-            set x = + x 128;
-            set i = ~ i 1;
-
-            cmp > i 0;
-            ifgoto Loop;
-            return;
-        }
-        
-        set x = 0;
-        set i = 3;
-        call Loop;
+        set #0 = 322;
 
         raw `10 7 0 10 8 0 29 -1`;
     ";
